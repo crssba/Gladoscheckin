@@ -2,14 +2,13 @@ import requests
 import json
 import os
 
-from pypushdeer import PushDeer
-
 # -------------------------------------------------------------------------------------------
 # github workflows
 # -------------------------------------------------------------------------------------------
 if __name__ == '__main__':
-    # pushdeer key 申请地址 https://www.pushdeer.com/product.html
-    sckey = os.environ.get("SENDKEY", "")
+    # Gotify 推送配置
+    gotify_url = "https://ysewsxzmhzws.us-east-1.clawcloudrun.com"
+    gotify_token = "Avz-fZpA5oUK2Cz"
 
     # 推送内容
     title = ""
@@ -17,7 +16,7 @@ if __name__ == '__main__':
     context = ""
 
     # glados账号cookie 直接使用数组 如果使用环境变量需要字符串分割一下
-    cookies = os.environ.get("COOKIES", []).split("&")
+    cookies = os.environ.get("COOKIES", "").split("&")
     if cookies[0] != "":
 
         check_in_url = "https://glados.space/api/user/checkin"        # 签到地址
@@ -42,17 +41,12 @@ if __name__ == '__main__':
             
             
             if checkin.status_code == 200:
-                # 解析返回的json数据
                 result = checkin.json()     
-                # 获取签到结果
                 check_result = result.get('message')
                 points = result.get('points')
 
-                # 获取账号当前状态
                 result = state.json()
-                # 获取剩余时间
                 leftdays = int(float(result['data']['leftDays']))
-                # 获取账号email
                 email = result['data']['email']
                 
                 print(check_result)
@@ -75,23 +69,31 @@ if __name__ == '__main__':
                 message_status = "签到请求URL失败, 请检查..."
                 message_days = "error"
 
-            context += "账号: " + email + ", P: " + str(points) +", 剩余: " + message_days + " | "
+            context += "账号: " + email + ", P: " + str(points) + ", 剩余: " + message_days + " | "
 
-        # 推送内容 
         title = f'Glados, 成功{success},失败{fail},重复{repeats}'
-        print("Send Content:" + "\n", context)
+        print("Send Content:\n", context)
         
     else:
-        # 推送内容 
         title = f'# 未找到 cookies!'
 
-    print("sckey:", sckey)
-    print("cookies:", cookies)
-    
-    # 推送消息
-    # 未设置 sckey 则不进行推送
-    if not sckey:
-        print("Not push")
+    # 推送消息到 Gotify
+    if not gotify_token:
+        print("No Gotify token set, skip push")
     else:
-        pushdeer = PushDeer(pushkey=sckey) 
-        pushdeer.send_text(title, desp=context)
+        try:
+            resp = requests.post(
+                f"{gotify_url}/message",
+                headers={"X-Gotify-Key": gotify_token},
+                json={
+                    "title": title,
+                    "message": context,
+                    "priority": 5
+                }
+            )
+            if resp.status_code == 200:
+                print("Gotify 推送成功")
+            else:
+                print("Gotify 推送失败:", resp.text)
+        except Exception as e:
+            print("Gotify 异常:", str(e))
