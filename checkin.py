@@ -30,46 +30,80 @@ if __name__ == '__main__':
         }
         
         for cookie in cookies:
-            checkin = requests.post(check_in_url, headers={'cookie': cookie, 'referer': referer, 'origin': origin,
-                                    'user-agent': useragent, 'content-type': 'application/json;charset=UTF-8'}, data=json.dumps(payload))
-            state = requests.get(status_url, headers={
-                                'cookie': cookie, 'referer': referer, 'origin': origin, 'user-agent': useragent})
+            try:
+                checkin = requests.post(
+                    check_in_url,
+                    headers={
+                        'cookie': cookie,
+                        'referer': referer,
+                        'origin': origin,
+                        'user-agent': useragent,
+                        'content-type': 'application/json;charset=UTF-8'
+                    },
+                    data=json.dumps(payload),
+                    timeout=10
+                )
+                state = requests.get(
+                    status_url,
+                    headers={
+                        'cookie': cookie,
+                        'referer': referer,
+                        'origin': origin,
+                        'user-agent': useragent
+                    },
+                    timeout=10
+                )
 
-            message_status = ""
-            points = 0
-            message_days = ""
-            
-            
-            if checkin.status_code == 200:
-                result = checkin.json()     
-                check_result = result.get('message')
-                points = result.get('points')
+                message_status = ""
+                points = 0
+                message_days = ""
+                email = "未知"
 
-                result = state.json()
-                leftdays = int(float(result['data']['leftDays']))
-                email = result['data']['email']
-                
-                print(check_result)
-                if "Checkin! Got" in check_result:
-                    success += 1
-                    message_status = "签到成功，会员点数 + " + str(points)
-                elif "Checkin Repeats!" in check_result:
-                    repeats += 1
-                    message_status = "重复签到，明天再来"
+                # 签到结果
+                if checkin.status_code == 200:
+                    result = checkin.json()
+                    print("签到返回:", result)
+                    check_result = result.get('message', '无返回信息')
+                    points = result.get('points', 0)
+
+                    # 状态结果
+                    result = state.json()
+                    print("状态返回:", result)
+                    if result.get("data"):
+                        leftdays = int(float(result['data'].get('leftDays', 0)))
+                        email = result['data'].get('email', '未知邮箱')
+                    else:
+                        leftdays = 0
+                        fail += 1
+                        message_status = f"状态查询失败: {result.get('message', '未知错误')}"
+                        message_days = "error"
+
+                    # 判断签到情况
+                    if "Checkin! Got" in check_result:
+                        success += 1
+                        message_status = "签到成功，会员点数 + " + str(points)
+                    elif "Checkin Repeats!" in check_result:
+                        repeats += 1
+                        message_status = "重复签到，明天再来"
+                    else:
+                        fail += 1
+                        message_status = "签到失败: " + check_result
+
+                    if not message_days:
+                        message_days = f"{leftdays} 天" if leftdays else "error"
                 else:
                     fail += 1
-                    message_status = "签到失败，请检查..."
-
-                if leftdays is not None:
-                    message_days = f"{leftdays} 天"
-                else:
+                    message_status = f"签到请求失败: HTTP {checkin.status_code}"
                     message_days = "error"
-            else:
-                email = ""
-                message_status = "签到请求URL失败, 请检查..."
+
+            except Exception as e:
+                fail += 1
+                email = "未知"
+                message_status = f"脚本异常: {str(e)}"
                 message_days = "error"
 
-            context += "账号: " + email + ", P: " + str(points) + ", 剩余: " + message_days + " | "
+            # 拼接每个账号的结果
+            context += f"账号: {email}, P: {points}, 剩余: {message_days}, 状态: {message_status} | "
 
         title = f'Glados, 成功{success},失败{fail},重复{repeats}'
         print("Send Content:\n", context)
@@ -89,7 +123,8 @@ if __name__ == '__main__':
                     "title": title,
                     "message": context,
                     "priority": 5
-                }
+                },
+                timeout=10
             )
             if resp.status_code == 200:
                 print("Gotify 推送成功")
